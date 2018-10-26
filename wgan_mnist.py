@@ -6,51 +6,11 @@ import tensorflow as tf
 from tensorflow.contrib import layers
 from tensorflow.examples.tutorials.mnist import input_data
 
-from cv2 import VideoWriter
 import threading
-import cv2
-import os
-
-
-# figure_content = None
-image_folder = 'images'
-video_name = 'video.avi'
-video_format = 'MJPG'
-video_size = (256, 256)
-export_video_nth_frame = 30
-height, width, channels = (28, 28, 1)
-framerate = 30
-blank_image = np.zeros((height,width,1), np.uint8)
-generated_images = []
-
-def draw_figure():
-    cv2.namedWindow('image', cv2.WINDOW_NORMAL)
-    cv2.resizeWindow('image', 150,150)
-
-    while True:
-        if len(generated_images) == 0:
-            cv2.imshow("image", blank_image)
-        else:  
-            img = generated_images[-1]
-            if img is not None:
-                cv2.imshow("image", img)
-            
-        cv2.waitKey(10)
-  
-def export_video():
-    """ Exports the rendered frames in generated_images to a video """
-    fourcc = cv2.VideoWriter_fourcc(*video_format)
-    video = VideoWriter(video_name, fourcc, framerate, video_size, 1)
-    print("Writing {} images".format(len(generated_images)))
-    for image in generated_images:
-        image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-        video.write(image)
-
-    video.release()
+from rendering import draw_figure, export_video
 
 def leaky_relu(x):
     return tf.maximum(x, 0.2 * x)
-
 
 def generator(z):
     with tf.variable_scope('generator'):
@@ -77,13 +37,12 @@ def discriminator(x, reuse):
         return layers.fully_connected(x, num_outputs=1, activation_fn=None)
 
 
+############# Create Tensorflow Graph ###############
 with tf.name_scope('placeholders'):
     x_true = tf.placeholder(tf.float32, [None, 28, 28, 1])
     z = tf.placeholder(tf.float32, [None, 128])
 
-
 x_generated = generator(z)
-
 d_true = discriminator(x_true, reuse=False)
 d_generated = discriminator(x_generated, reuse=True)
 
@@ -108,16 +67,23 @@ with tf.name_scope('optimizer'):
     g_train = optimizer.minimize(g_loss, var_list=g_vars)
     d_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='discriminator')
     d_train = optimizer.minimize(d_loss, var_list=d_vars)
+#####################################################
 
 
+
+############# Initialize Variables ###############
 session = tf.InteractiveSession()
 # session = tf.InteractiveSession(config=tf.ConfigProto(log_device_placement=True))
 tf.global_variables_initializer().run()
 mnist = input_data.read_data_sets('MNIST_data')
+generated_images = []
+export_video_nth_frame = 30
+height, width, channels = (28, 28, 1)
+#####################################################
 
 
 ############# Start Rendering Thread ###############
-drawing_thread = threading.Thread(target=draw_figure)
+drawing_thread = threading.Thread(target=draw_figure, args=(generated_images,))
 drawing_thread.setDaemon(True)
 drawing_thread.start()
 #####################################################
@@ -126,31 +92,26 @@ drawing_thread.start()
 ############# Train ###############
 for i in range(20000):
     batch = mnist.train.next_batch(50)
-    images = batch[0].reshape([-1, 28, 28, 1])
+    images = batch[0].reshape([-1, height, width, channels])
     z_train = np.random.randn(50, 128)
 
     session.run(g_train, feed_dict={z: z_train})
     for j in range(5):
         session.run(d_train, feed_dict={x_true: images, z: z_train})
-    
+
     print('iter={}/20000'.format(i))
     z_validate = np.random.randn(1, 128)
     generated = x_generated.eval(feed_dict={z: z_validate}).squeeze()
-    
+
     generated = np.uint8(generated*255) # hand over to thread
-    generated = cv2.resize(generated, video_size)#, fx=5.0, fy=5.0) 
     generated_images.append(generated)
 
     if i%export_video_nth_frame == 0:
         pass
-        export_video()
-
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        export_video(generated_images)
 #####################################################
 
 
 ################ Finalize #####################
-export_video()
-cv2.destroyAllWindows()
+export_video(generated_images)
 #####################################################
