@@ -7,8 +7,8 @@ Some example generated digits:
 
 ![WGAN results](https://user-images.githubusercontent.com/2202312/32365318-b0ccc44a-c079-11e7-8fb1-6b1566c0bdc4.png)
 
-![Video Result]()
 [![MNIST](https://img.youtube.com/vi/d6DWWw6dqT0/0.jpg)](https://www.youtube.com/watch?v=d6DWWw6dqT0)
+
 How to run
 ----------
 
