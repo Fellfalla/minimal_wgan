@@ -1,10 +1,9 @@
 # Folder with user specific settings
 .vscode/
 
-
 # Data
 MNIST_data/
-
+__pycache__/
 
 # Generated files
 video.avi
