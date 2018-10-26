@@ -1,0 +1,10 @@
+# Folder with user specific settings
+.vscode/
+
+
+# Data
+MNIST_data/
+
+
+# Generated files
+video.avi

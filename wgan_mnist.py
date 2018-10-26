@@ -6,9 +6,47 @@ import tensorflow as tf
 from tensorflow.contrib import layers
 from tensorflow.examples.tutorials.mnist import input_data
 
+from cv2 import VideoWriter
+import threading
+import cv2
+import os
 
-session = tf.InteractiveSession()
 
+# figure_content = None
+image_folder = 'images'
+video_name = 'video.avi'
+video_format = 'MJPG'
+video_size = (256, 256)
+export_video_nth_frame = 30
+height, width, channels = (28, 28, 1)
+framerate = 30
+blank_image = np.zeros((height,width,1), np.uint8)
+generated_images = []
+
+def draw_figure():
+    cv2.namedWindow('image', cv2.WINDOW_NORMAL)
+    cv2.resizeWindow('image', 150,150)
+
+    while True:
+        if len(generated_images) == 0:
+            cv2.imshow("image", blank_image)
+        else:  
+            img = generated_images[-1]
+            if img is not None:
+                cv2.imshow("image", img)
+            
+        cv2.waitKey(10)
+  
+def export_video():
+    """ Exports the rendered frames in generated_images to a video """
+    fourcc = cv2.VideoWriter_fourcc(*video_format)
+    video = VideoWriter(video_name, fourcc, framerate, video_size, 1)
+    print("Writing {} images".format(len(generated_images)))
+    for image in generated_images:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+        video.write(image)
+
+    video.release()
 
 def leaky_relu(x):
     return tf.maximum(x, 0.2 * x)
@@ -71,10 +109,21 @@ with tf.name_scope('optimizer'):
     d_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='discriminator')
     d_train = optimizer.minimize(d_loss, var_list=d_vars)
 
-tf.global_variables_initializer().run()
 
+session = tf.InteractiveSession()
+# session = tf.InteractiveSession(config=tf.ConfigProto(log_device_placement=True))
+tf.global_variables_initializer().run()
 mnist = input_data.read_data_sets('MNIST_data')
 
+
+############# Start Rendering Thread ###############
+drawing_thread = threading.Thread(target=draw_figure)
+drawing_thread.setDaemon(True)
+drawing_thread.start()
+#####################################################
+
+
+############# Train ###############
 for i in range(20000):
     batch = mnist.train.next_batch(50)
     images = batch[0].reshape([-1, 28, 28, 1])
@@ -83,12 +132,25 @@ for i in range(20000):
     session.run(g_train, feed_dict={z: z_train})
     for j in range(5):
         session.run(d_train, feed_dict={x_true: images, z: z_train})
+    
+    print('iter={}/20000'.format(i))
+    z_validate = np.random.randn(1, 128)
+    generated = x_generated.eval(feed_dict={z: z_validate}).squeeze()
+    
+    generated = np.uint8(generated*255) # hand over to thread
+    generated = cv2.resize(generated, video_size)#, fx=5.0, fy=5.0) 
+    generated_images.append(generated)
 
-    if i % 100 == 0:
-        print('iter={}/20000'.format(i))
-        z_validate = np.random.randn(1, 128)
-        generated = x_generated.eval(feed_dict={z: z_validate}).squeeze()
+    if i%export_video_nth_frame == 0:
+        pass
+        export_video()
 
-        plt.figure('results')
-        plt.imshow(generated, clim=[0, 1], cmap='bone')
-        plt.pause(0.001)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+#####################################################
+
+
+################ Finalize #####################
+export_video()
+cv2.destroyAllWindows()
+#####################################################
